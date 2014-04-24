@@ -50,11 +50,11 @@ func init() {
 	flag.StringVar(&load, "load", "port", "load data type")
 }
 
-func exit(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+func errorCheck(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
-
 func padding(level int) string {
 	return strings.Repeat(" ", (level-1)*2)
 }
@@ -188,9 +188,7 @@ func slotItem(ofile io.Writer, fname string) {
 	sort.Sort(itemlist(odata))
 	odata = append([][]string{[]string{"ID", "ITEMID", "名前", "装備艦"}}, odata...)
 	err := csv.NewWriter(ofile).WriteAll(odata)
-	if err != nil {
-		panic(err)
-	}
+	errorCheck(err)
 }
 
 func readShip3(sname string, proc func(i int, item map[string]interface{})) {
@@ -296,9 +294,7 @@ func ship3List(ofile io.Writer, fname string) {
 	}
 	odata = append([][]string{[]string{"遠征回数", "疲労", "名", "艦種", "レベル", "状態", "EXP", "修理資源", "修理時間", "艦種id"}}, odata...)
 	err := csv.NewWriter(ofile).WriteAll(odata)
-	if err != nil {
-		panic(err)
-	}
+	errorCheck(err)
 }
 
 func strip(body []byte) []byte {
@@ -308,14 +304,10 @@ func strip(body []byte) []byte {
 }
 func unmarshal(fname string) map[string]interface{} {
 	js, err := ioutil.ReadFile(fname)
-	if err != nil {
-		exit(err)
-	}
+	errorCheck(err)
 	jp := make(map[string]interface{})
 	err = json.Unmarshal(strip(js), &jp)
-	if err != nil {
-		exit(err)
-	}
+	errorCheck(err)
 	return jp
 }
 
@@ -331,7 +323,7 @@ func sortedIntKeys(mm interface{}) []int {
 			keys = append(keys, k)
 		}
 	default:
-		panic("coding error")
+		panic("should be map[int]string / map[int]ship")
 	}
 	sort.Ints(keys)
 	return keys
@@ -339,14 +331,10 @@ func sortedIntKeys(mm interface{}) []int {
 
 func printer(oname string, proc func(ofile io.Writer)) {
 	ofile, err := os.Create(oname)
-	if err != nil {
-		exit(err)
-	}
+	errorCheck(err)
 	defer func() {
 		err = ofile.Close()
-		if err != nil {
-			exit(err)
-		}
+		errorCheck(err)
 	}()
 	proc(ofile)
 }
@@ -391,14 +379,10 @@ func main() {
 		printUsage()
 	}
 	ofile, err := os.Create(flag.Args()[1])
-	if err != nil {
-		exit(err)
-	}
+	errorCheck(err)
 	defer func() {
 		err = ofile.Close()
-		if err != nil {
-			exit(err)
-		}
+		errorCheck(err)
 	}()
 	fname := flag.Args()[0]
 	if !dump {

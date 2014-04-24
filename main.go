@@ -1,14 +1,14 @@
 package main
 
-// kctool
-// master file name (need)
-// api_start2.json
-//
-// load type name
-// port
-// slotitem (need port.json)
-// master
+/* kctool
+master file name (need)
+api_start2.json
 
+load type name
+port
+slotitem (need port.json)
+master
+*/
 import (
 	"bytes"
 	"encoding/csv"
@@ -319,10 +319,19 @@ func unmarshal(fname string) map[string]interface{} {
 	return jp
 }
 
-func sortedIntKeys(m map[int]string) []int {
+func sortedIntKeys(mm interface{}) []int {
 	var keys []int
-	for k, _ := range m {
-		keys = append(keys, k)
+	switch m := mm.(type) {
+	case map[int]string:
+		for k, _ := range m {
+			keys = append(keys, k)
+		}
+	case map[int]ship:
+		for k, _ := range m {
+			keys = append(keys, k)
+		}
+	default:
+		panic("coding error")
 	}
 	sort.Ints(keys)
 	return keys
@@ -351,19 +360,10 @@ func printTable(fname string, table map[int]string) {
 
 }
 
-func sortedIntKeys2(m map[int]ship) []int {
-	var keys []int
-	for k, _ := range m {
-		keys = append(keys, k)
-	}
-	sort.Ints(keys)
-	return keys
-}
-
 func printMaster() {
 	printTable("type_master.txt", typeTable)
 	printer("ship_master.txt", func(ofile io.Writer) {
-		for _, k := range sortedIntKeys2(shipTable) {
+		for _, k := range sortedIntKeys(shipTable) {
 			fmt.Fprintf(ofile, "%6d,%-10s,%s\n", k, typeTable[shipTable[k].stype], shipTable[k].name)
 		}
 	})

@@ -2,12 +2,12 @@ package main
 
 // kctool
 // master file name (need)
-// stype.json
-// ship.json
+// api_start2.json
 //
 // load type name
-// ship3
-// slotitem (need ship3.json)
+// port
+// slotitem (need port.json)
+// master
 
 import (
 	"bytes"
@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	ship3Exp1 = `=IF(F%[1]d>49,ROUNDUP((F%[1]d-49)/3),"")`
-	ship3Exp2 = `=IF(F%[1]d<49,49-F%[1]d,"")`
+	ship3Exp1      = `=IF(F%[1]d>49,ROUNDUP((F%[1]d-49)/3),"")`
+	ship3Exp2      = `=IF(F%[1]d<49,49-F%[1]d,"")`
+	masterFileName = "api_start2.json"
 )
 
 var (
@@ -35,6 +36,7 @@ var (
 	typeTable  = make(map[int]string)
 	shipTable  = make(map[int]ship)
 	equipTable = make(map[int]string)
+	itemTable  = make(map[int]string)
 	dispItems  = []string{"api_lv", "api_cond", "api_exp", "api_ndock_item", "api_ndock_time"}
 )
 
@@ -45,7 +47,7 @@ type ship struct {
 
 func init() {
 	flag.BoolVar(&dump, "dump", false, "dump row data")
-	flag.StringVar(&load, "load", "ship3", "load data type")
+	flag.StringVar(&load, "load", "port", "load data type")
 }
 
 func exit(err error) {
@@ -104,25 +106,31 @@ func readJson(sname string, proc func(key string, item interface{})) {
 	}
 }
 
-func loadTable(sname string, proc func(item map[string]interface{})) {
-	readJson(sname, func(k string, v interface{}) {
+// api_start2.json の読み込みに特化。api_dataの下にさらに各項目があることが前提
+func loadMasterFile(kname string, proc func(item map[string]interface{})) {
+	readJson(masterFileName, func(k string, v interface{}) {
+		log.Println(k)
 		if k == "api_data" {
-			for _, x := range v.([]interface{}) {
-				proc(x.(map[string]interface{}))
+			for kk, vv := range v.(map[string]interface{}) {
+				if kk == kname {
+					for _, x := range vv.([]interface{}) {
+						proc(x.(map[string]interface{}))
+					}
+				}
 			}
 		}
 	})
 }
 
 func loadTypeTable() {
-	loadTable("stype.json", func(item map[string]interface{}) {
+	loadMasterFile("api_mst_stype", func(item map[string]interface{}) {
 		typeTable[toInt(item["api_id"])] = item["api_name"].(string)
 	})
-	log.Println("load 'stype.json'")
+	log.Println("load 'stype from api_start2.json'")
 }
 
 func loadShipTable() {
-	loadTable("ship.json", func(item map[string]interface{}) {
+	loadMasterFile("api_mst_ship", func(item map[string]interface{}) {
 		n := item["api_name"].(string)
 		if n == "なし" {
 			return
@@ -130,24 +138,66 @@ func loadShipTable() {
 		val := ship{stype: toInt(item["api_stype"]), name: n}
 		shipTable[toInt(item["api_id"])] = val
 	})
-	log.Println("load 'ship.json'")
+	log.Println("load 'ship master from api_start2.json'")
+}
+
+func loadItemTable() {
+	loadMasterFile("api_mst_slotitem", func(item map[string]interface{}) {
+		id := toInt(item["api_id"])
+		name := item["api_name"].(string)
+		itemTable[id] = name
+	})
+	log.Println("load 'item master from api_start2.json'")
+}
+
+type itemlist [][]string
+
+func (s itemlist) Len() int {
+	return len(s)
+}
+
+func (s itemlist) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s itemlist) Less(i, j int) bool {
+	if atoi(s[i][0]) < atoi(s[j][0]) {
+		return true
+	}
+	if atoi(s[i][0]) > atoi(s[j][0]) {
+		return false
+	}
+	return atoi(s[i][1]) < atoi(s[j][1])
 }
 
 func slotItem(ofile io.Writer, fname string) {
 	output(ofile, "ID,ITEMID,名前,装備艦\n")
-	loadTable(fname, func(item map[string]interface{}) {
-		id := toInt(item["api_id"])
-		itemId := toInt(item["api_slotitem_id"])
-		name := item["api_name"].(string)
-		eq := equipTable[id]
-		output(ofile, "%d,%d,%s,%s\n", id, itemId, name, eq)
+	odata := [][]string{}
+	readJson(fname, func(k string, v interface{}) {
+		if k == "api_data" {
+			for _, x := range v.([]interface{}) {
+				item := x.(map[string]interface{})
+				itemId := toInt(item["api_id"])
+				id := toInt(item["api_slotitem_id"])
+				name := itemTable[id]
+				eq := equipTable[itemId]
+				odata = append(odata, []string{strconv.Itoa(id), strconv.Itoa(itemId), name, eq})
+			}
+		}
 	})
+	sort.Sort(itemlist(odata))
+	odata = append([][]string{[]string{"ID", "ITEMID", "名前", "装備艦"}}, odata...)
+	err := csv.NewWriter(ofile).WriteAll(odata)
+	if err != nil {
+		panic(err)
+	}
 }
+
 func readShip3(sname string, proc func(i int, item map[string]interface{})) {
 	readJson(sname, func(k string, v interface{}) {
 		if k == "api_data" {
 			for k, x := range v.(map[string]interface{}) {
-				if k == "api_ship_data" {
+				if k == "api_ship" {
 					for i, val := range x.([]interface{}) {
 						proc(i, val.(map[string]interface{}))
 					}
@@ -158,13 +208,13 @@ func readShip3(sname string, proc func(i int, item map[string]interface{})) {
 }
 
 func loadEquipTable() {
-	readShip3("ship3.json", func(i int, item map[string]interface{}) {
+	readShip3("port.json", func(i int, item map[string]interface{}) {
 		kname := shipTable[toInt(item["api_ship_id"])].name
 		for _, v := range item["api_slot"].([]interface{}) {
 			equipTable[toInt(v)] = kname
 		}
 	})
-	log.Println("load 'ship3.json'")
+	log.Println("load 'port.json'")
 }
 
 func toHhmmss(ti int) (int, int, int) {
@@ -240,7 +290,7 @@ func ship3List(ofile io.Writer, fname string) {
 		odata = append(odata, shipData(i, item))
 	})
 	sort.Sort(sorting(odata))
-	for i,_ := range odata {
+	for i, _ := range odata {
 		odata[i][0] = fmt.Sprintf(ship3Exp1, i+2)
 		odata[i][1] = fmt.Sprintf(ship3Exp2, i+2)
 	}
@@ -269,6 +319,57 @@ func unmarshal(fname string) map[string]interface{} {
 	return jp
 }
 
+func sortedIntKeys(m map[int]string) []int {
+	var keys []int
+	for k, _ := range m {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	return keys
+}
+
+func printer(oname string, proc func(ofile io.Writer)) {
+	ofile, err := os.Create(oname)
+	if err != nil {
+		exit(err)
+	}
+	defer func() {
+		err = ofile.Close()
+		if err != nil {
+			exit(err)
+		}
+	}()
+	proc(ofile)
+}
+
+func printTable(fname string, table map[int]string) {
+	printer(fname, func(ofile io.Writer) {
+		for _, k := range sortedIntKeys(table) {
+			fmt.Fprintf(ofile, "%6d,%s\n", k, table[k])
+		}
+	})
+
+}
+
+func sortedIntKeys2(m map[int]ship) []int {
+	var keys []int
+	for k, _ := range m {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	return keys
+}
+
+func printMaster() {
+	printTable("type_master.txt", typeTable)
+	printer("ship_master.txt", func(ofile io.Writer) {
+		for _, k := range sortedIntKeys2(shipTable) {
+			fmt.Fprintf(ofile, "%6d,%-10s,%s\n", k, typeTable[shipTable[k].stype], shipTable[k].name)
+		}
+	})
+	printTable("item_master.txt", itemTable)
+}
+
 func printUsage() {
 	fmt.Fprintln(os.Stderr, `Usage:
 kctool [<flags>] <json file name> <output file name>`)
@@ -279,6 +380,13 @@ kctool [<flags>] <json file name> <output file name>`)
 }
 func main() {
 	flag.Parse()
+	if load == "master" {
+		loadTypeTable()
+		loadShipTable()
+		loadItemTable()
+		printMaster()
+		return
+	}
 	if len(flag.Args()) != 2 {
 		printUsage()
 	}
@@ -297,10 +405,11 @@ func main() {
 		loadTypeTable()
 		loadShipTable()
 		if load == "slotitem" {
+			loadItemTable()
 			loadEquipTable()
 			slotItem(ofile, fname)
 			return
-		} else if load == "ship3" {
+		} else if load == "port" {
 			ship3List(ofile, fname)
 			return
 		}

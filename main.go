@@ -171,7 +171,6 @@ func (s itemlist) Less(i, j int) bool {
 }
 
 func slotItem(ofile io.Writer, fname string) {
-	output(ofile, "ID,ITEMID,名前,装備艦\n")
 	odata := [][]string{}
 	readJson(fname, func(k string, v interface{}) {
 		if k == "api_data" {
